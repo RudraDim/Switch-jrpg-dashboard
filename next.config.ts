@@ -1,4 +1,4 @@
-import type { NextConfig } from "next";
+import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
   /* config options here */
@@ -7,10 +7,10 @@ const nextConfig: NextConfig = {
     remotePatterns: [
       {
         protocol: 'https',
-        hostname: '**', // Autorise tous les sites pour tes tests
+        hostname: '**',
       },
     ],
-  }
+  },
 };
 
 export default nextConfig;
