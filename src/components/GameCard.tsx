@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { deleteGameAction, updateGameAction } from '@/app/actions';
+import { supabase } from '@/lib/supabase'; // Ajout de l'import Supabase pour le Storage
 import Image from 'next/image';
 import Link from 'next/link';
 
@@ -27,9 +28,55 @@ export default function GameCard({ game, index }: GameCardProps) {
   const [developer, setDeveloper] = useState(game.developer);
   const [status, setStatus] = useState(game.status);
   const [rating, setRating] = useState(game.rating);
-  const [image, setImage] = useState(game.image || '');
+
+  // États ajoutés pour gérer le fichier d'image
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [isUpdating, setIsUpdating] = useState(false);
 
   const isPriority = index < 2;
+
+  // Nouvelle fonction pour gérer l'upload et l'action d'édition
+  const handleEditSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setIsUpdating(true);
+
+    const formData = new FormData(e.currentTarget);
+    let imageUrl = game.image || ''; // Par défaut, on garde l'ancienne URL
+
+    try {
+      // 1. Si un nouveau fichier est sélectionné, on l'envoie sur le Storage
+      if (imageFile) {
+        const fileExt = imageFile.name.split('.').pop();
+        const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 7)}.${fileExt}`;
+        const filePath = `covers/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('images-jeux')
+          .upload(filePath, imageFile);
+
+        if (uploadError) throw uploadError;
+
+        const { data } = supabase.storage.from('images-jeux').getPublicUrl(filePath);
+
+        imageUrl = data.publicUrl;
+      }
+
+      // 2. On injecte la bonne URL de l'image (ancienne ou nouvelle) dans le formData
+      formData.set('image', imageUrl);
+
+      // 3. On appelle manuellement ta Server Action
+      await updateGameAction(formData);
+
+      setIsEditModalOpen(false);
+      setImageFile(null); // On clean l'état du fichier
+    } catch (err) {
+      // On vérifie si l'erreur est une instance de l'objet Error natif
+      const errorMessage = err instanceof Error ? err.message : 'Une erreur inconnue est survenue';
+      alert('Erreur lors de la mise à jour : ' + errorMessage);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
 
   return (
     <>
@@ -101,7 +148,7 @@ export default function GameCard({ game, index }: GameCardProps) {
                 fill
                 priority={isPriority}
                 className="object-cover transition-transform duration-300 group-hover:scale-105"
-                sizes="(max-w-7xl) 25vw, 100vw"
+                sizes="(w-7xl) 25vw, 100vw"
               />
             ) : (
               <div className="flex h-full items-center justify-center text-xs text-slate-300 italic">
@@ -204,11 +251,8 @@ export default function GameCard({ game, index }: GameCardProps) {
           <div className="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-100 bg-white p-6 shadow-2xl">
             <h3 className="mb-4 text-lg font-bold text-slate-900">Modifier {game.title}</h3>
 
-            <form
-              action={updateGameAction}
-              onSubmit={() => setIsEditModalOpen(false)}
-              className="space-y-4"
-            >
+            {/* Remplacement de action par onSubmit */}
+            <form onSubmit={handleEditSubmit} className="space-y-4">
               <input type="hidden" name="id" value={game.id} />
 
               <div className="flex flex-col gap-1">
@@ -237,16 +281,16 @@ export default function GameCard({ game, index }: GameCardProps) {
                 />
               </div>
 
+              {/* Remplacement de l'input URL par l'input FILE pour le Storage */}
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-bold text-slate-400 uppercase">
-                  URL de la jaquette
+                  Nouvelle jaquette (laisser vide pour conserver)
                 </label>
                 <input
-                  type="url"
-                  name="image"
-                  value={image}
-                  onChange={(e) => setImage(e.target.value)}
-                  className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-500 focus:bg-white"
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setImageFile(e.target.files?.[0] || null)}
+                  className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500 outline-none file:mr-4 file:rounded-md file:border-0 file:bg-slate-200 file:px-2 file:py-1 file:text-xs file:font-semibold file:text-slate-700 hover:file:bg-slate-300 focus:border-blue-500 focus:bg-white"
                 />
               </div>
 
@@ -288,16 +332,18 @@ export default function GameCard({ game, index }: GameCardProps) {
               <div className="mt-6 flex justify-end gap-3 pt-2">
                 <button
                   type="button"
+                  disabled={isUpdating}
                   onClick={() => setIsEditModalOpen(false)}
-                  className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                 >
                   Annuler
                 </button>
                 <button
                   type="submit"
-                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700"
+                  disabled={isUpdating}
+                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
                 >
-                  Sauvegarder
+                  {isUpdating ? 'Sauvegarde...' : 'Sauvegarder'}
                 </button>
               </div>
             </form>

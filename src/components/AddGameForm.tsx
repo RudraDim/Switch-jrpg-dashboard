@@ -9,34 +9,69 @@ export default function AddGameForm() {
   const [developer, setDeveloper] = useState('');
   const [status, setStatus] = useState('À faire');
   const [rating, setRating] = useState(50);
-  const [image, setImage] = useState('');
+  const [imageFile, setImageFile] = useState<File | null>(null); // Changement : on stocke le fichier
   const [isSending, setIsSending] = useState(false);
   const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSending(true);
-    const { error } = await supabase.from('games').insert([
-      {
-        title,
-        developer,
-        status,
-        rating: Number(rating),
-        image,
-      },
-    ]);
 
-    if (error) {
-      alert("Erreur lors de l'ajout : " + error.message);
-    } else {
-      setTitle('');
-      setDeveloper('');
-      setStatus('À faire');
-      setRating(50);
-      setImage('');
-      router.refresh();
+    let imageUrl = '';
+
+    try {
+      // 1. Si un fichier est sélectionné, on l'envoie sur Supabase Storage
+      if (imageFile) {
+        const fileExt = imageFile.name.split('.').pop();
+        const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 7)}.${fileExt}`;
+        const filePath = `covers/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('images-jeux') // Remplace par le nom exact de ton bucket
+          .upload(filePath, imageFile);
+
+        if (uploadError) throw uploadError;
+
+        // 2. On récupère son URL publique
+        const { data } = supabase.storage.from('images-jeux').getPublicUrl(filePath);
+
+        imageUrl = data.publicUrl;
+      }
+      // Ajoute ce log juste avant le supabase.from('games').insert(...)
+      console.log("L'URL générée est :", imageUrl);
+      // 3. Insertion en BDD avec l'URL de l'image (ou vide si pas d'image)
+      const { error } = await supabase.from('games').insert([
+        {
+          title,
+          developer,
+          status,
+          rating: Number(rating),
+          // image: 'https://google.com/test.jpg',
+          image: imageUrl,
+        },
+      ]);
+
+      if (error) {
+        alert("Erreur lors de l'ajout : " + error.message);
+      } else {
+        setTitle('');
+        setDeveloper('');
+        setStatus('À faire');
+        setRating(50);
+        setImageFile(null); // Reset du fichier
+        // On vide l'input file manuellement
+        const fileInput = document.getElementById('cover-upload') as HTMLInputElement;
+        if (fileInput) fileInput.value = '';
+
+        router.refresh();
+      }
+    } catch (err) {
+      // On vérifie si l'erreur est une instance de l'objet Error natif
+      const errorMessage = err instanceof Error ? err.message : 'Une erreur inconnue est survenue';
+      alert('Erreur lors de la mise à jour : ' + errorMessage);
+    } finally {
+      setIsSending(false);
     }
-    setIsSending(false);
   };
 
   return (
@@ -77,17 +112,17 @@ export default function AddGameForm() {
             </select>
           </div>
 
+          {/* Nouveau champ d'upload de fichier */}
           <div>
             <label className="mb-1 block text-xs font-bold text-slate-400 uppercase">
-              URL de la jaquette
+              Jaquette du jeu
             </label>
             <input
-              type="url"
-              name="image"
-              placeholder="https://example.com/image.jpg"
-              className="w-full rounded-lg border border-slate-200 p-2 text-slate-900 outline-none focus:ring-2 focus:ring-red-500"
-              value={image}
-              onChange={(e) => setImage(e.target.value)}
+              id="cover-upload"
+              type="file"
+              accept="image/*"
+              className="w-full rounded-lg border border-slate-200 p-1.5 text-sm text-slate-500 outline-none file:mr-4 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-1 file:text-xs file:font-semibold file:text-slate-700 hover:file:bg-slate-200 focus:ring-2 focus:ring-red-500"
+              onChange={(e) => setImageFile(e.target.files?.[0] || null)}
             />
           </div>
 
