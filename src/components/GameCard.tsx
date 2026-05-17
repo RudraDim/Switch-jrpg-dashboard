@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { deleteGameAction, updateGameAction } from '@/app/actions';
-import { supabase } from '@/lib/supabase'; // Ajout de l'import Supabase pour le Storage
+import { supabase } from '@/lib/supabase';
 import Image from 'next/image';
 import Link from 'next/link';
 
@@ -20,6 +20,41 @@ interface GameCardProps {
   index: number;
 }
 
+// ==========================================
+// 🛠️ FONCTION UTILITAIRE DE NETTOYAGE STORAGE (CORRIGÉE)
+// ==========================================
+async function deleteStorageFile(url: string) {
+  if (!url) return;
+
+  console.log('🔗 URL reçue pour suppression :', url);
+
+  try {
+    // Supabase stocke sous la forme : .../storage/v1/object/public/images-jeux/covers/nom.jpg
+    // On cherche à récupérer uniquement : covers/nom.jpg
+    // Pour être sûr, on découpe juste après le nom du bucket "images-jeux/"
+    const bucketSegment = 'images-jeux/';
+    if (!url.includes(bucketSegment)) {
+      console.warn("⚠️ L'URL ne contient pas le segment du bucket.");
+      return;
+    }
+
+    const filePath = url.split(bucketSegment)[1];
+    console.log('📁 Path extrait pour Supabase Storage :', filePath);
+
+    if (!filePath) return;
+
+    const { data, error } = await supabase.storage.from('images-jeux').remove([filePath]);
+
+    if (error) {
+      console.error('❌ Erreur retournée par Supabase Storage :', error.message);
+    } else {
+      console.log('✅ Fichier supprimé du bucket avec succès :', data);
+    }
+  } catch (err) {
+    console.error('💥 Erreur critique nettoyage Storage :', err);
+  }
+}
+
 export default function GameCard({ game, index }: GameCardProps) {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -29,22 +64,22 @@ export default function GameCard({ game, index }: GameCardProps) {
   const [status, setStatus] = useState(game.status);
   const [rating, setRating] = useState(game.rating);
 
-  // États ajoutés pour gérer le fichier d'image
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const isPriority = index < 2;
 
-  // Nouvelle fonction pour gérer l'upload et l'action d'édition
+  // Handler d'édition corrigé
   const handleEditSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsUpdating(true);
 
     const formData = new FormData(e.currentTarget);
-    let imageUrl = game.image || ''; // Par défaut, on garde l'ancienne URL
+    let imageUrl = game.image || '';
+    const oldImageUrl = game.image;
 
     try {
-      // 1. Si un nouveau fichier est sélectionné, on l'envoie sur le Storage
       if (imageFile) {
         const fileExt = imageFile.name.split('.').pop();
         const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 7)}.${fileExt}`;
@@ -57,38 +92,70 @@ export default function GameCard({ game, index }: GameCardProps) {
         if (uploadError) throw uploadError;
 
         const { data } = supabase.storage.from('images-jeux').getPublicUrl(filePath);
-
         imageUrl = data.publicUrl;
       }
 
-      // 2. On injecte la bonne URL de l'image (ancienne ou nouvelle) dans le formData
       formData.set('image', imageUrl);
 
-      // 3. On appelle manuellement ta Server Action
+      // On lance la mise à jour en BDD
       await updateGameAction(formData);
 
+      // Si la BDD a accepté la modification ET qu'on a mis une nouvelle image, on nettoie l'ancienne
+      if (imageFile && oldImageUrl) {
+        await deleteStorageFile(oldImageUrl);
+      }
+
       setIsEditModalOpen(false);
-      setImageFile(null); // On clean l'état du fichier
+      setImageFile(null);
     } catch (err) {
-      // On vérifie si l'erreur est une instance de l'objet Error natif
-      const errorMessage = err instanceof Error ? err.message : 'Une erreur inconnue est survenue';
-      alert('Erreur lors de la mise à jour : ' + errorMessage);
+      console.error("Erreur lors de l'edit submit :", err);
+      alert('Erreur lors de la mise à jour.');
     } finally {
       setIsUpdating(false);
     }
   };
 
+  // Handler de suppression corrigé et sécurisé
+  const handleDeleteSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setIsDeleting(true);
+
+    try {
+      // 1. On tente de supprimer l'image, mais on ne bloque pas la suite si ça échoue
+      if (game.image) {
+        await deleteStorageFile(game.image);
+      }
+    } catch (storageErr) {
+      console.error(
+        "Le nettoyage de l'image a échoué, on continue quand même la suppression du jeu :",
+        storageErr
+      );
+    }
+
+    try {
+      // 2. On reconstruit proprement le FormData attendu par ta Server Action (deleteGameAction)
+      const formData = new FormData();
+      formData.append('id', game.id);
+
+      await deleteGameAction(formData);
+      setIsDeleteModalOpen(false);
+    } catch (err) {
+      console.error("Erreur lors de l'appel à deleteGameAction :", err);
+      alert('Erreur lors de la suppression du jeu');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   return (
     <>
-      {/* 1. La div parente hérite du style global de la carte et gère le survol */}
+      {/* Le reste de ton JSX reste strictement identique */}
       <div className="group relative flex h-full flex-col rounded-2xl border border-slate-300 bg-white p-5 shadow-sm transition-all hover:translate-y-1.25 hover:shadow-xl">
-        {/* BOUTONS D'ACTION (Sortis du Link ! Ils vivent au-dessus grâce au z-30) */}
         <div className="absolute top-4 right-4 z-30 flex gap-2">
-          {/* Bouton Éditer ✏️ */}
           <button
             type="button"
             onClick={(e) => {
-              e.preventDefault(); // Sécurité pour Next.js
+              e.preventDefault();
               e.stopPropagation();
               setIsEditModalOpen(true);
             }}
@@ -110,11 +177,10 @@ export default function GameCard({ game, index }: GameCardProps) {
             </svg>
           </button>
 
-          {/* Bouton Supprimer 🗑️ */}
           <button
             type="button"
             onClick={(e) => {
-              e.preventDefault(); // Sécurité pour Next.js
+              e.preventDefault();
               e.stopPropagation();
               setIsDeleteModalOpen(true);
             }}
@@ -137,9 +203,7 @@ export default function GameCard({ game, index }: GameCardProps) {
           </button>
         </div>
 
-        {/* 2. Le Link n'enveloppe plus que le contenu cliquable de la carte */}
         <Link href={`/games/${game.id}`} className="flex h-full flex-col outline-none">
-          {/* Contenu de la jaquette */}
           <div className="relative block h-62 w-full shrink-0 overflow-hidden rounded-xl bg-slate-100">
             {game.image ? (
               <Image
@@ -157,7 +221,6 @@ export default function GameCard({ game, index }: GameCardProps) {
             )}
           </div>
 
-          {/* Textes */}
           <div className="grow">
             <h2 className="mt-2 mb-1 line-clamp-2 h-12 text-xl leading-tight font-bold text-slate-800">
               {game.title}
@@ -165,21 +228,13 @@ export default function GameCard({ game, index }: GameCardProps) {
             <p className="text-gray-500">{game.developer}</p>
           </div>
 
-          {/* Status & Barres de stats */}
           <div className="mt-auto pt-4">
             <div className="mb-2 flex items-center justify-between">
               <span
-                className={`rounded px-2 py-1 text-xs font-medium ${
-                  game.status === 'En cours'
-                    ? 'bg-blue-100 text-blue-700'
-                    : game.status === 'Terminé'
-                      ? 'bg-green-100 text-green-700'
-                      : 'bg-gray-100 text-gray-600'
-                }`}
+                className={`rounded px-2 py-1 text-xs font-medium ${game.status === 'En cours' ? 'bg-blue-100 text-blue-700' : game.status === 'Terminé' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}
               >
                 {game.status}
               </span>
-
               <span className="text-sm font-bold text-slate-700">
                 {game.rating}
                 <span className="text-xs text-slate-400">/100</span>
@@ -188,13 +243,7 @@ export default function GameCard({ game, index }: GameCardProps) {
 
             <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
               <div
-                className={`h-full transition-all duration-700 ${
-                  game.rating >= 80
-                    ? 'bg-emerald-500'
-                    : game.rating >= 50
-                      ? 'bg-amber-500'
-                      : 'bg-rose-500'
-                }`}
+                className={`h-full transition-all duration-700 ${game.rating >= 80 ? 'bg-emerald-500' : game.rating >= 50 ? 'bg-amber-500' : 'bg-rose-500'}`}
                 style={{ width: `${game.rating}%` }}
               />
             </div>
@@ -207,7 +256,7 @@ export default function GameCard({ game, index }: GameCardProps) {
         <div className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center p-4">
           <div
             className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm"
-            onClick={() => setIsDeleteModalOpen(false)}
+            onClick={() => !isDeleting && setIsDeleteModalOpen(false)}
           />
           <div className="relative w-full max-w-md rounded-2xl border border-slate-100 bg-white p-6 text-left shadow-xl">
             <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-rose-50 text-xl text-rose-600">
@@ -221,18 +270,19 @@ export default function GameCard({ game, index }: GameCardProps) {
             <div className="mt-6 flex justify-end gap-3">
               <button
                 type="button"
+                disabled={isDeleting}
                 onClick={() => setIsDeleteModalOpen(false)}
                 className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
               >
                 Annuler
               </button>
-              <form action={deleteGameAction} onSubmit={() => setIsDeleteModalOpen(false)}>
-                <input type="hidden" name="id" value={game.id} />
+              <form onSubmit={handleDeleteSubmit}>
                 <button
                   type="submit"
-                  className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+                  disabled={isDeleting}
+                  className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
                 >
-                  Supprimer
+                  {isDeleting ? 'Suppression...' : 'Supprimer'}
                 </button>
               </form>
             </div>
@@ -240,18 +290,17 @@ export default function GameCard({ game, index }: GameCardProps) {
         </div>
       )}
 
-      {/* --- MODAL D'ÉDITION ✏️ --- */}
+      {/* --- MODAL D'ÉDITION --- */}
       {isEditModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div
             className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm"
-            onClick={() => setIsEditModalOpen(false)}
+            onClick={() => !isUpdating && setIsEditModalOpen(false)}
           />
 
           <div className="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-100 bg-white p-6 shadow-2xl">
             <h3 className="mb-4 text-lg font-bold text-slate-900">Modifier {game.title}</h3>
 
-            {/* Remplacement de action par onSubmit */}
             <form onSubmit={handleEditSubmit} className="space-y-4">
               <input type="hidden" name="id" value={game.id} />
 
@@ -281,7 +330,6 @@ export default function GameCard({ game, index }: GameCardProps) {
                 />
               </div>
 
-              {/* Remplacement de l'input URL par l'input FILE pour le Storage */}
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-bold text-slate-400 uppercase">
                   Nouvelle jaquette (laisser vide pour conserver)

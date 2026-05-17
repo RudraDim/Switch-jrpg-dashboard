@@ -11,4 +11,4 @@ read commitMessage
 git commit -m "$commitMessage"
 git push origin main
 
-echo "--- Déploiement réussi ! Vercel prend le relais. ---"
+# echo "--- Déploiement réussi ! Vercel prend le relais. ---"
