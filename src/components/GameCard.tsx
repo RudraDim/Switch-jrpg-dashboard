@@ -13,6 +13,8 @@ interface Game {
   rating: number;
   image: string;
   status: string;
+  summary: string;
+  review: string;
 }
 
 interface GameCardProps {
@@ -146,6 +148,8 @@ export default function GameCard({ game, index }: GameCardProps) {
       setIsDeleting(false);
     }
   };
+
+  console.log('Hello from EditGameModal!'); // Log pour vérifier que le composant est bien chargé
 
   return (
     <>
@@ -374,6 +378,28 @@ export default function GameCard({ game, index }: GameCardProps) {
                   value={rating}
                   onChange={(e) => setRating(parseInt(e.target.value))}
                   className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-slate-200 accent-blue-600"
+                />
+              </div>
+
+              {/* Champ Résumé */}
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-semibold text-slate-700">Résumé du jeu</label>
+                <textarea
+                  name="summary"
+                  defaultValue={game.summary || ''}
+                  className="min-h-25 rounded-lg border border-slate-200 bg-slate-50 p-2 text-sm focus:bg-white"
+                  placeholder="Raconte brièvement le début de l'histoire..."
+                />
+              </div>
+
+              {/* Champ Avis */}
+              <div className="mt-4 flex flex-col gap-2">
+                <label className="text-sm font-semibold text-slate-700">Avis Personnel</label>
+                <textarea
+                  name="review"
+                  defaultValue={game.review || ''}
+                  className="min-h-30 rounded-lg border border-slate-200 bg-slate-50 p-2 text-sm focus:bg-white"
+                  placeholder="Qu'as-tu pensé du système de combat, des musiques, du scénario ?"
                 />
               </div>
 

@@ -67,7 +67,15 @@ export default async function GameDetailPage({ params }: GamePageProps) {
             <h1 className="text-3xl leading-tight font-black tracking-tight text-slate-900">
               {game.title}
             </h1>
-            <p className="mt-1 text-lg text-slate-500">Développé par {game.developer}</p>
+            <p className="mt-1 mb-2 text-lg text-slate-500">Développé par {game.developer}</p>
+            <h2 className="text-2xl leading-tight font-black tracking-tight text-slate-900">
+              Résumé
+            </h2>
+            <p className="mt-1 mb-2 text-lg whitespace-pre-line text-slate-500">{game.summary}</p>
+            <h2 className="text-2xl leading-tight font-black tracking-tight text-slate-900">
+              Avis
+            </h2>
+            <p className="text-md mt-4 whitespace-pre-line text-slate-700 italic">{game.review}</p>
           </div>
 
           {/* Bloc Note */}

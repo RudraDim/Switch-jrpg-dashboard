@@ -27,6 +27,8 @@ export async function updateGameAction(formData: FormData) {
   const status = formData.get('status');
   const rating = formData.get('rating');
   const image = formData.get('image');
+  const summary = formData.get('summary');
+  const review = formData.get('review');
 
   if (!id) return;
 
@@ -38,6 +40,8 @@ export async function updateGameAction(formData: FormData) {
       status,
       rating: Number(rating),
       image,
+      summary,
+      review,
     })
     .eq('id', id);
 
