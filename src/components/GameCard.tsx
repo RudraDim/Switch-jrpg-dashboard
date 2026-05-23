@@ -149,8 +149,6 @@ export default function GameCard({ game, index }: GameCardProps) {
     }
   };
 
-  console.log('Hello from EditGameModal!'); // Log pour vérifier que le composant est bien chargé
-
   return (
     <>
       {/* Le reste de ton JSX reste strictement identique */}
